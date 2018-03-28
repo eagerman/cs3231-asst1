@@ -23,6 +23,9 @@ enum {
  */
 volatile unsigned long int counter;
 
+// global lock
+static struct lock* counter_lock;
+
 
 /*
  * Declare an array of adder counters to count per-thread
@@ -78,15 +81,17 @@ static void adder(void * unusedpointer, unsigned long addernumber)
                 /* loop doing increments until we achieve the overall number
                    of increments */
 
+	        lock_acquire(counter_lock);
                 a = counter;
                 if (a < NADDS) {
                         counter = counter + 1;
+
                         b = counter;
 
                         /* count the number of increments we perform  for statistics */
                         adder_counters[addernumber]++;
 
-                        /* check we are getting sane results */
+                        /* check we are getting same results */
                         if (a + 1 != b) {
                                 kprintf("In thread %ld, %ld + 1 == %ld?\n",
                                         addernumber, a, b) ;
@@ -94,6 +99,7 @@ static void adder(void * unusedpointer, unsigned long addernumber)
                 } else {
                         flag = 0;
                 }
+	        lock_release(counter_lock);
         }
 
         /* signal the main thread we have finished and then exit */
@@ -128,16 +134,15 @@ int maths (int data1, char **data2)
 
         finished = sem_create("finished", 0);
 
+        //create the global lock
+        counter_lock = lock_create("counter lock");
+
+	if ( counter_lock == NULL)
+		panic("maths: could not create lock");
+
         if (finished == NULL) {
                 panic("maths: sem create failed");
         }
-
-        /*
-         * ********************************************************************
-         * INSERT ANY INITIALISATION CODE YOU REQUIRE HERE
-         * ********************************************************************
-         */
-
 
         /*
          * Start NADDERS adder() threads.
@@ -177,15 +182,13 @@ int maths (int data1, char **data2)
         }
         kprintf("The adders performed %ld increments overall\n", sum);
 
-        /*
-         * **********************************************************************
-         * INSERT ANY CLEANUP CODE YOU REQUIRE HERE
-         * **********************************************************************
-         */
+        // destroy the lock after all threads finished executing
+        lock_destroy(counter_lock);
 
 
         /* clean up the semaphore we allocated earlier */
         sem_destroy(finished);
         return 0;
 }
+
 
