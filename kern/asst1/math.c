@@ -136,6 +136,8 @@ int maths (int data1, char **data2)
 
         //create the global lock
         counter_lock = lock_create("counter lock");
+	if (counter_lock == 0)
+	panic("maths: lock create failed!");
 
 	if ( counter_lock == NULL)
 		panic("maths: could not create lock");
