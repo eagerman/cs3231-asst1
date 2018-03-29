@@ -11,9 +11,9 @@
    synchronise your bounded. A sample declaration of a buffer is shown
    below. You can change this if you choose another implementation. */
 
-static struct pc_data buffer[BUFFER_SIZE];
-static int head;
-static int tail;
+static struct pc_data buffer[BUFFER_SIZE]; // the buffer (queue)
+static int head; // index of the head of the queue
+static int tail; // index of the tail of the queue
 static struct semaphore *empty; // starts out with BUFFER_SIZE
 static struct semaphore *full; // starts out with 0
 static struct semaphore *mutex; // self descriptive
@@ -31,7 +31,9 @@ struct pc_data consumer_receive(void)
         P(full);
         P(mutex);
         
+        // the data to be consumed is at the head of the buffer
         thedata = buffer[head];
+        // the shifts one step closer to the tail
         head    = (head + 1) % BUFFER_SIZE;
         
         V(mutex);
@@ -48,7 +50,9 @@ void producer_send(struct pc_data item)
         P(empty);
         P(mutex);
         
+        // tail "extends" and wraps around (if reached end)
         tail = (tail + 1) % BUFFER_SIZE;
+        // set argument (item) as the new tail
         buffer[tail] = item;
         
         V(mutex);
@@ -68,7 +72,7 @@ void producerconsumer_startup(void)
         mutex = sem_create("mutex", 1);
         if (empty == NULL || full == NULL)
                 panic("producerconsumer_startup: can't allocate semaphores!\n");
-        head = 0;
+        head = 0; // the queue is initially empty, so the indices are the same
         tail = 0;
 }
 
