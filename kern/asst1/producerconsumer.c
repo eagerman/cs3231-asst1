@@ -28,16 +28,16 @@ struct pc_data consumer_receive(void)
         struct pc_data thedata;
 
         /* FIXME: this data should come from your buffer, obviously... */
-        P(full);
-        P(mutex);
+        P(full); // consumer will block if the fill count is zero
+        P(mutex); // this is the buffer semaphore, it is used to prevent multiple consumers consuming the same item concurrently
         
         // the data to be consumed is at the head of the buffer
         thedata = buffer[head];
         // the shifts one step closer to the tail
         head    = (head + 1) % BUFFER_SIZE;
-        
-        V(mutex);
-        V(empty);
+
+        V(mutex); //release buffer
+        V(empty); // signal to waiting producers that an empty slot in the buffer is now available
 
         return thedata;
 }
@@ -47,16 +47,16 @@ struct pc_data consumer_receive(void)
 
 void producer_send(struct pc_data item)
 {
-        P(empty);
-        P(mutex);
+        P(empty); // producer will block once the empty count is zero, i.e buffer is full
+        P(mutex); // buffer semaphore
         
         // tail "extends" and wraps around (if reached end)
         tail = (tail + 1) % BUFFER_SIZE;
         // set argument (item) as the new tail
         buffer[tail] = item;
-        
-        V(mutex);
-        V(full);
+
+        V(mutex); // release buffer
+        V(full); // signal to waiting consumers that an item has been added to the buffer
 }
 
 
