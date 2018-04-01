@@ -20,22 +20,20 @@ struct barorder {
 
         /* This struct can be extended with your own entries below here */ 
 
-};
-
-/* struct barorderNode is a Doubly Linked List data structure
-   to hold pending orders for bar.c, there is no notion of size.
-   Ends of the list are null. */
-struct barorderNode {
-        struct barorder *order;
+        /* barorder is a Doubly-Linked List*/
+        /* end nodes are null nodes */
         struct barorderNode *next;
         struct barorderNode *prev;
         struct semaphore *bartender_sem;
-        //int    STATE; // this order is awaiting fulfillment or not picked up yet
-                      // i.e. BUSY/FREE
+        struct semaphore *done;
+        int    state; // this order is awaiting fulfillment or not picked up yet
+
+
 };
 
-typedef struct barorderNode node;
+typedef struct barorder node; // A bar order is a node
 
+// list handle (to avoid O(n) insertion and deletion)
 typedef struct OL {
         node *head;
         node *tail;

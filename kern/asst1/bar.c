@@ -27,6 +27,7 @@ static int bottle_states[NBOTTLES]; // the state of every bottle (BUSY/FREE)
 static struct semaphore *mutex; // sem to insure mutual exclusion
 // static struct semaphore *bartender_sems[NBARTENDERS]; functionality of this arr is placed in the DLL
 static OrderList pending_list; // this will never have more than NCUSTOMERS elements (theoritically at least)
+static struct semaphore *orders_pending;
 
 /*
  * **********************************************************************
@@ -44,8 +45,12 @@ static OrderList pending_list; // this will never have more than NCUSTOMERS elem
 
 void order_drink(struct barorder *order)
 {
-        (void) order; /* Avoid compiler warning, remove when used */
-        panic("You need to write some code!!!!\n");
+        // the addOrder function should have set up the order struct as needed
+        // for this implementation to work
+        // signals that there are pending orders
+        V(orders_pending);
+        // block until signalled as done
+        P(order->done);
 }
 
 
@@ -66,9 +71,18 @@ void order_drink(struct barorder *order)
 
 struct barorder *take_order(void)
 {
-        struct barorder *ret = NULL;
+        //TODO
+        // block until we are signalled that an order is submitted
+        P(orders_pending);
+        // traverse list checking whether we can make a drink
+        // we're going head---->tail to prioritize orders made first
+        node *curr = pending_list->head;
+        for (; curr != NULL; curr = curr->next) {
+                if (test(curr))
+                        break;
+        }
 
-        return ret;
+        return curr;
 }
 
 
@@ -91,7 +105,11 @@ void fill_order(struct barorder *order)
 
         /* the call to mix must remain */
         mix(order);
-
+        
+        int i = 0;
+        for (; i < DRINK_COMPLEXITY; i++) {
+                bottle_states[order->requested_bottles[i]] = FREE;
+        }
 }
 
 
@@ -104,8 +122,7 @@ void fill_order(struct barorder *order)
 
 void serve_order(struct barorder *order)
 {
-        (void) order; /* avoid a compiler warning, remove when you
-                         start */
+        V(order->done);
 }
 
 
@@ -127,8 +144,10 @@ void serve_order(struct barorder *order)
 
 void bar_open(void)
 {
-        pendingList = createList();
+        pending_list = createList();
         mutex = sem_create("bar.c: mutex", 1);
+        // TODO panic if alloc fails
+        orders_pending = sem_create("bar.c: orders_pending", 0);
         int i;
         for (i = 0; i < NBOTTLES; i++) {
                 bottle_states[i] = FREE;
@@ -142,11 +161,12 @@ void bar_open(void)
  * Perform any cleanup after the bar has closed and everybody
  * has gone home.
  */
-
+// TODO be more rigorous in cleaning up
 void bar_close(void)
 {
         kfree (pending_list);
         sem_destroy(mutex);
+        sem_destroy(orders_pending);
 }
 
 
@@ -157,13 +177,13 @@ void bar_close(void)
  */
  
  /*
- * test(OrderList *o)
+ * test(node *o)
  *
  * test to see if the order can be fulfilled at this moment
- * if so, update the bottle state(s) 
+ * if so, update the bottle state(s) and inform bartender to complete this order
  */
  
-int test(OrderList order) {
+int test(node *order) {
         // TODO ensure mutual exclusion for altering states
         
         int all_free = TRUE;
@@ -171,15 +191,17 @@ int test(OrderList order) {
         // entering critical section
         P(mutex);
         for (i = 0; i < DRINK_COMPLEXITY; i++) {
-                if (bottle_states[order->order->requested_bottles[i]] == BUSY)
+                if (bottle_states[order->requested_bottles[i]] == BUSY)
                         all_free = FALSE;
         }
         
         if (all_free) {
                 for (i = 0; i < DRINK_COMPLEXITY; i++) {
-                        bottle_states[order->order->requested_bottles[i]] = BUSY;
+                        bottle_states[order->requested_bottles[i]] = BUSY;
                 }
                 
+                order->state = BUSY;
+                removeOrder(pending_list, order);
                 V(mutex);
                 V(order->bartender_sem);
                 return TRUE;
@@ -199,7 +221,7 @@ int test(OrderList order) {
 OrderList createList() {
         OrderList new = kmalloc(sizeof(struct OL));
         if (new == NULL) {
-                panic("bar.c: createList(): kmalloc failed\n");
+                panic("bar.c:createList(): kmalloc failed\n");
         }
         new->head = NULL;
         new->tail = NULL;
@@ -207,32 +229,33 @@ OrderList createList() {
 }
  
 node *addOrder(OrderList list, struct barorder *order) {
-        node *curr = kmalloc(sizeof(node));
-        if (curr == NULL) {
-                panic("bar.c: addOrder(): kmalloc failed\n");
-        }
+        
         if (list->tail == NULL) {
-                list->tail = curr;
-                list->head = curr;
+                list->tail = order;
+                list->head = order;
 
-                curr->next = NULL;
-                curr->prev = NULL;
+                order->next = NULL;
+                order->prev = NULL;
 
-                curr->order = order;
-                curr->bartender_sem = sem_create("bartender_sem", 0);
+                order->bartender_sem = sem_create("bartender_sem", 0);
+                order->done = sem_create("done", 0);
+                // TODO add alloc panic(s)
+                order->state = FREE;
         } else {
-                list->tail->next = curr;
+                list->tail->next = order;
 
-                curr->next = NULL;
-                curr->prev = list->tail;
+                order->next = NULL;
+                order->prev = list->tail;
 
-                list->tail = curr;
+                list->tail = order;
 
-                curr->order = order;
-                curr->bartender_sem = sem_create("bartender_sem", 0);
+                order->bartender_sem = sem_create("bartender_sem", 0);
+                order->done = sem_create("done", 0);
+                // TODO add alloc panic(s)
+                order->state = FREE;
         }
         
-        return curr;
+        return order;
 }
 
 void removeOrder(OrderList list, node *order) {
@@ -254,6 +277,18 @@ void removeOrder(OrderList list, node *order) {
         }
         // take care of mem leaks
         sem_destroy(order->bartender_sem);
+        sem_destroy(order->done);
         kfree(order);
         
+}
+
+node *what_can_I_make_now(OrderList list) {
+        node *curr = list->head;
+        for(; curr != NULL; curr = curr->next) {
+                if (test(curr)) {
+                        return curr;
+                }
+        } 
+        return NULL;
+      
 }
