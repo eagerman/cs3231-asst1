@@ -15,8 +15,18 @@
  *
  */
 
-/* Declare any globals you need here (e.g. locks, etc...) */
+#define FALSE 0
+#define  TRUE 1
 
+#define FREE  0
+#define BUSY  1
+
+
+/* Declare any globals you need here (e.g. locks, etc...) */
+static int bottle_states[NBOTTLES]; // the state of every bottle (BUSY/FREE)
+static struct semaphore *mutex; // sem to insure mutual exclusion
+// static struct semaphore *bartender_sems[NBARTENDERS]; functionality of this arr is placed in the DLL
+static OrderList pending_list; // this will never have more than NCUSTOMERS elements (theoritically at least)
 
 /*
  * **********************************************************************
@@ -132,3 +142,98 @@ void bar_close(void)
 
 }
 
+
+/*
+ * **********************************************************************
+ * HELPER FUNCTIONS
+ * **********************************************************************
+ */
+ 
+ /*
+ * test(OrderList *o)
+ *
+ * test to see if the order can be fulfilled at this moment
+ * if so, update the bottle state(s) 
+ */
+ 
+int test(OrderList order) {
+        // TODO ensure mutual exclusion for altering states
+        
+        int all_free = TRUE;
+        int i;
+        // entering critical section
+        P(mutex);
+        for (i = 0; i < DRINK_COMPLEXITY; i++) {
+                if (bottle_states[order->order->glass.contents[i]] == BUSY)
+                        all_free = FALSE;
+        }
+        
+        if (all_free) {
+                for (i = 0; i < DRINK_COMPLEXITY; i++) {
+                        bottle_states[order->order->glass.contents[i]] = BUSY;
+                }
+                
+                V(mutex);
+                V(order->bartender_sem);
+        } else {
+                V(mutex);
+        }
+        
+        return TRUE;
+}
+
+/*
+ * **********************************************************************
+ * OrderList MANAGEMENT FUNCTIONS
+ * **********************************************************************
+ */
+ 
+OrderList create_list() {
+        return NULL;
+}
+ 
+OrderList addOrder(OrderList list, struct barorder *order) {
+        OrderList ret;
+        if (list == NULL) {
+              ret = kmalloc(sizeof(struct barorderNode));
+              ret->next = NULL;
+              ret->prev = NULL;
+              ret->order = order;
+              ret->bartender_sem = sem_create("bartender_sem", 0);
+              //ret->state = ??? //TODO
+              
+              return ret;
+        }
+        // else list is already populated
+        
+        OrderList curr = list;
+        
+        for (curr = list; curr->next != NULL; curr = curr->next);
+        OrderList tail = curr;
+        curr->next = kmalloc(sizeof(struct barorderNode));
+        curr = curr->next;
+        curr->next = NULL;
+        curr->prev = tail;
+        tail->next = curr;
+        
+        curr->order = order;
+        curr->bartender_sem = sem_create("bartender_sem", 0);
+        
+        return curr;
+}
+
+void removeOrder(OrderList order) {
+        OrderList prev_node = order->prev;
+        OrderList next_node = order->next;
+        if (prev_node != NULL) {
+                prev_node->next = next_node;
+        }
+        if (next_node != NULL) {
+                next_node->prev = prev_node;
+        }
+        
+        // take care of mem leaks
+        sem_destroy(order->bartender_sem);
+        kfree(order);
+        
+}
