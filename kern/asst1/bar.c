@@ -18,8 +18,8 @@
 #define FALSE 0
 #define  TRUE 1
 
-#define FREE  0
-#define BUSY  1
+#define  FREE 0
+#define  BUSY 1
 
 
 /* Declare any globals you need here (e.g. locks, etc...) */
@@ -127,6 +127,12 @@ void serve_order(struct barorder *order)
 
 void bar_open(void)
 {
+        pendingList = createList();
+        mutex = sem_create("bar.c: mutex", 1);
+        int i;
+        for (i = 0; i < NBOTTLES; i++) {
+                bottle_states[i] = FREE;
+        }
 
 }
 
@@ -139,7 +145,8 @@ void bar_open(void)
 
 void bar_close(void)
 {
-
+        kfree (pending_list);
+        sem_destroy(mutex);
 }
 
 
@@ -164,22 +171,23 @@ int test(OrderList order) {
         // entering critical section
         P(mutex);
         for (i = 0; i < DRINK_COMPLEXITY; i++) {
-                if (bottle_states[order->order->glass.contents[i]] == BUSY)
+                if (bottle_states[order->order->requested_bottles[i]] == BUSY)
                         all_free = FALSE;
         }
         
         if (all_free) {
                 for (i = 0; i < DRINK_COMPLEXITY; i++) {
-                        bottle_states[order->order->glass.contents[i]] = BUSY;
+                        bottle_states[order->order->requested_bottles[i]] = BUSY;
                 }
                 
                 V(mutex);
                 V(order->bartender_sem);
+                return TRUE;
         } else {
                 V(mutex);
+                return FALSE;
         }
         
-        return TRUE;
 }
 
 /*
@@ -188,50 +196,62 @@ int test(OrderList order) {
  * **********************************************************************
  */
  
-OrderList create_list() {
-        return NULL;
+OrderList createList() {
+        OrderList new = kmalloc(sizeof(struct OL));
+        if (new == NULL) {
+                panic("bar.c: createList(): kmalloc failed\n");
+        }
+        new->head = NULL;
+        new->tail = NULL;
+        return new;
 }
  
-OrderList addOrder(OrderList list, struct barorder *order) {
-        OrderList ret;
-        if (list == NULL) {
-              ret = kmalloc(sizeof(struct barorderNode));
-              ret->next = NULL;
-              ret->prev = NULL;
-              ret->order = order;
-              ret->bartender_sem = sem_create("bartender_sem", 0);
-              //ret->state = ??? //TODO
-              
-              return ret;
+node *addOrder(OrderList list, struct barorder *order) {
+        node *curr = kmalloc(sizeof(node));
+        if (curr == NULL) {
+                panic("bar.c: addOrder(): kmalloc failed\n");
         }
-        // else list is already populated
-        
-        OrderList curr = list;
-        
-        for (curr = list; curr->next != NULL; curr = curr->next);
-        OrderList tail = curr;
-        curr->next = kmalloc(sizeof(struct barorderNode));
-        curr = curr->next;
-        curr->next = NULL;
-        curr->prev = tail;
-        tail->next = curr;
-        
-        curr->order = order;
-        curr->bartender_sem = sem_create("bartender_sem", 0);
+        if (list->tail == NULL) {
+                list->tail = curr;
+                list->head = curr;
+
+                curr->next = NULL;
+                curr->prev = NULL;
+
+                curr->order = order;
+                curr->bartender_sem = sem_create("bartender_sem", 0);
+        } else {
+                list->tail->next = curr;
+
+                curr->next = NULL;
+                curr->prev = list->tail;
+
+                list->tail = curr;
+
+                curr->order = order;
+                curr->bartender_sem = sem_create("bartender_sem", 0);
+        }
         
         return curr;
 }
 
-void removeOrder(OrderList order) {
-        OrderList prev_node = order->prev;
-        OrderList next_node = order->next;
-        if (prev_node != NULL) {
+void removeOrder(OrderList list, node *order) {
+        node *prev_node = order->prev;
+        node *next_node = order->next;
+        
+        if (order == list->head && order == list->tail) {
+                list->head = NULL;
+                list->tail = NULL;
+        } else if (order == list->head) {
+                list->head = next_node;
+                list->head->prev = NULL;
+        } else if (order == list->tail) {
+                list->tail = prev_node;
+                list->tail->next = NULL;
+        } else {
                 prev_node->next = next_node;
-        }
-        if (next_node != NULL) {
                 next_node->prev = prev_node;
         }
-        
         // take care of mem leaks
         sem_destroy(order->bartender_sem);
         kfree(order);
