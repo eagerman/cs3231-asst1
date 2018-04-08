@@ -1,7 +1,10 @@
 Part 1 
 
-counter is the shared global variable that causes concurrency problems when accessed concurrently by multiple threads 
-and because it was stored in variable a and b the critical code  has to be surrounded with synchronisation locks as shown below:
+counter is the shared global variable that causes concurrency problems when 
+accessed concurrently by multiple threads 
+and because it was stored in variable a and b the critical code  has to 
+be surrounded with synchronisation locks as shown below:
+
 	        lock_acquire(counter_lock);
                 a = counter;
                 if (a < NADDS) {
@@ -25,8 +28,15 @@ and because it was stored in variable a and b the critical code  has to be surro
 --------------------------------------------------------------------------------------------------------------------------------------------------
 Part 2
 
-The problem that was causing deadlock in the this part is that threads bill and ben are acquiring locks a and b in reverse order and this is a deadlock cause, because once the first thread bill proceeds and acquires resources of locka and thread ben acquires resource of lockb, thread bill will block waiting on reasource b and thread ben will block waiting on resource a and they both end up waiting forever which is deadlocking.
-the solution is to have both threads acquire resources in the same order, so once one thread acquires the first resource the second thread can not acquire the same resource and will have to wait till the first thread finishes using all the resources before it can aquire them.
+The problem that was causing deadlock in the this part is that threads bill and ben are acquiring locks a and b in reverse 
+order and this is a deadlock cause, because once the first thread bill proceeds and acquires resources of locka and thread 
+ben acquires resource of lockb, thread bill will block waiting on reasource b and thread ben will block waiting on resource 
+a and they both end up waiting forever which is deadlocking.
+
+the solution is to have both threads acquire resources in the same order, so once one thread acquires the first 
+resource the second thread can not acquire the same resource and will have to wait till the first thread finishes 
+using all the resources before it can aquire them.
+
 so simply flipping the order in which ben acquires the resources will solve the problem
 
 change
@@ -39,12 +49,53 @@ to
  -------------------------------------------------------------------------------------------------------------------------------------------------
 Part 3
 
-The solution to the producer consumer problem is using semaphores. We need 2 semaphores for signaling mechanism to manage the count of produced items in the buffer and a mutex for locking mechanism
-We are using semaphores "full" which represents the number of filled items in the buffer and "empty" which represents the empty slots in the buffer.
+The solution to the producer consumer problem is using semaphores. We need 2 semaphores for signaling mechanism to 
+manage the count of produced items in the buffer and a mutex for locking mechanism
+
+We are using semaphores "full" which represents the number of filled items in the buffer and "empty" which 
+represents the empty slots in the buffer.
+
 once the full sempahore is zero all consumers will block and will signal to waiting producers in order to produce new items. on the other hand 
 once producers produce an item in the buffer they will signal to consumers that an item was produced and ready to be consumed.
-But because the buffer is a shared memory space between all producers and consumers a race condition might occur where two or more producers or consumers try to read or write to the same memory slot at the same time, so reading and writing to the buffer is a critical section of the code,
-"thedata = buffer[head]" is in the consumer and "buffer[tail] = item" in the producer and need to be executed in a way that ensures mutual exclusivity, and thats why we a need to use mutex which will prevent concurrent access of the buffer.
+But because the buffer is a shared memory space between all producers and consumers a race condition might occur where 
+two or more producers or consumers try to read or write to the same memory slot at the same time, so reading and writing 
+to the buffer is a critical section of the code,
+"thedata = buffer[head]" is in the consumer and "buffer[tail] = item" in the producer and need to be executed in a way 
+that ensures mutual exclusivity, and thats why we a need to use mutex which will prevent concurrent access of the buffer.
 
 
 ---------------------------------------------------------------------------------------------------------------------------------------------------
+
+Part 4
+
+Keep in mind this solution started out as a morphing of the dining philosophers problem.
+
+We have modified the original barorder struct to have a doubly linked list type of structure to it. 
+This list is managed by a handle that holds the head and tail of the list so that we can 
+avoid O(n) insertion and deletion (this allows for O(1)). 
+
+
+The workflow is as follows:
+
+The customer orders a drink: This drink is added to the list and a semaphore [orders_pending] 
+(like the empty semaphore in part 3) acts as a signaller for bartenders 
+that the list of pending orders is not empty and they are now able to take orders.
+The customer blocks (P()) on a semaphore held in the barorder node. The bartender will unblock once it is served.
+
+The bartender takes the order: We enforce mutual exclusion between bottles using a 
+global variable called bottle_states where each bottle has a state (USED/FREE). **We don't take just any order** 
+Only allowing one bartender to test the list for instantly do-able orders via a semaphore at once, we scan orders to find
+what we can make right now, we pop the item we can make off the list and update the states of the bottles.
+Then, we return.
+
+**TEST()**: this is the function that does most of the heavylifting, only take_order() calls it and here's what
+it does: it checks if the order passed to it is do-able (checking bottle_states), if so it sets the requested bottles
+as busy, removes the order from the list and returns true. This guarantees that every order coming out of take order is instantly do-able
+
+The bartender fills the order: We simply mix since we already enforced mutualexclusion in the previous step via bottle_states,
+and we signal that the bottles are free to use (no locks required here since tests are done individually)
+
+The bartender serves the order: the bartender simply signals the semaphore in the barordernode so that the customer no longer waits
+(the customer is waiting in order_drink())
+
+
