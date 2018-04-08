@@ -72,8 +72,8 @@ void producerconsumer_startup(void)
         mutex = sem_create("mutex", 1);
         if (empty == NULL || full == NULL)
                 panic("producerconsumer_startup: can't allocate semaphores!\n");
-        head = 0; // the queue is initially empty, so the indices are the same
-        tail = 0;
+        head = 0; // the queue is initially empty
+        tail = -1;
 }
 
 /* Perform any clean-up you need here */

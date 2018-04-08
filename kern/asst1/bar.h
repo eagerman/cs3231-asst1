@@ -24,9 +24,8 @@ struct barorder {
         /* end nodes are null nodes */
         struct barorder *next;
         struct barorder *prev;
-        struct semaphore *bartender_sem;
         struct semaphore *done;
-        int    state; // this order is awaiting fulfillment or not picked up yet
+        //int    state; // this order is awaiting fulfillment or not picked up yet
 
 
 };
