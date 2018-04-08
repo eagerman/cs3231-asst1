@@ -22,8 +22,8 @@ struct barorder {
 
         /* barorder is a Doubly-Linked List*/
         /* end nodes are null nodes */
-        struct barorderNode *next;
-        struct barorderNode *prev;
+        struct barorder *next;
+        struct barorder *prev;
         struct semaphore *bartender_sem;
         struct semaphore *done;
         int    state; // this order is awaiting fulfillment or not picked up yet
@@ -38,5 +38,9 @@ typedef struct OL {
         node *head;
         node *tail;
 } *OrderList;
+
+
+
+
 
 #endif
