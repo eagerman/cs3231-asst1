@@ -1,1 +1,50 @@
-Place your design document here.
+Part 1 
+
+counter is the shared global variable that causes concurrency problems when accessed concurrently by multiple threads 
+and because it was stored in variable a and b the critical code  has to be surrounded with synchronisation locks as shown below:
+	        lock_acquire(counter_lock);
+                a = counter;
+                if (a < NADDS) {
+                        counter = counter + 1;
+
+                        b = counter;
+
+                        /* count the number of increments we perform  for statistics */
+                        adder_counters[addernumber]++;
+
+                        /* check we are getting same results */
+                        if (a + 1 != b) {
+                                kprintf("In thread %ld, %ld + 1 == %ld?\n",
+                                        addernumber, a, b) ;
+                        }
+                } else {
+                        flag = 0;
+                }
+	        lock_release(counter_lock);
+
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Part 2
+
+The problem that was causing deadlock in the this part is that threads bill and ben are acquiring locks a and b in reverse order and this is a deadlock cause, because once the first thread bill proceeds and acquires resources of locka and thread ben acquires resource of lockb, thread bill will block waiting on reasource b and thread ben will block waiting on resource a and they both end up waiting forever which is deadlocking.
+the solution is to have both threads acquire resources in the same order, so once one thread acquires the first resource the second thread can not acquire the same resource and will have to wait till the first thread finishes using all the resources before it can aquire them.
+so simply flipping the order in which ben acquires the resources will solve the problem
+
+change
+	lock_acquire(lockb);
+	lock_acquire(locka);
+to 
+    lock_acquire(locka);
+    lock_acquire(lockb);
+ 
+ -------------------------------------------------------------------------------------------------------------------------------------------------
+Part 3
+
+The solution to the producer consumer problem is using semaphores. We need 2 semaphores for signaling mechanism to manage the count of produced items in the buffer and a mutex for locking mechanism
+We are using semaphores "full" which represents the number of filled items in the buffer and "empty" which represents the empty slots in the buffer.
+once the full sempahore is zero all consumers will block and will signal to waiting producers in order to produce new items. on the other hand 
+once producers produce an item in the buffer they will signal to consumers that an item was produced and ready to be consumed.
+But because the buffer is a shared memory space between all producers and consumers a race condition might occur where two or more producers or consumers try to read or write to the same memory slot at the same time, so reading and writing to the buffer is a critical section of the code,
+"thedata = buffer[head]" is in the consumer and "buffer[tail] = item" in the producer and need to be executed in a way that ensures mutual exclusivity, and thats why we a need to use mutex which will prevent concurrent access of the buffer.
+
+
+---------------------------------------------------------------------------------------------------------------------------------------------------
